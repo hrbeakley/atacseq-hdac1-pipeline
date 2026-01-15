@@ -17,7 +17,9 @@ nextflow run main.nf -profile cluster,singularity,conda
 
 4. Uncomment the downstream workflow steps in main.nf (for annotation, motif analysis, and visualization), then resume the pipeline: 
 
-```nextflow run main.nf -profile cluster,singularity,conda -resume```
+```
+nextflow run main.nf -profile cluster,singularity,conda -resume
+```
 
 5. Run all cells in deseq.Rmd to perform differential expression analysis on RNA-seq data and generate RNA–ATAC concordance plots.
 
