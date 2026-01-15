@@ -1,0 +1,207 @@
+---
+title: "diffbind"
+output: html_document
+---
+
+### Setup
+```{r}
+library(DiffBind)
+library(data.table)
+library(tidyverse)
+library(rtracklayer)
+```
+
+# Differential Accessibility Analysis — cDC1
+```{r}
+cDC1_samples <- read.csv("cDC1_2.csv")
+dba_cDC1 <- dba (sampleSheet = cDC1_samples)
+dba.show(dba_cDC1)
+```
+
+### Read counting
+```{r}
+dba_cDC1 <- dba.count(dba_cDC1,
+                      summits = 250,
+                      minOverlap = 2,
+                      bUseSummarizeOverlaps = TRUE)
+```
+
+### Inspect peakset
+```{r}
+cDC1_counts <- dba.peakset(dba_cDC1, bRetrieve=TRUE)
+head(cDC1_counts)
+dba.show(dba_cDC1)
+```
+
+### Define contrasts and run differential analysis
+```{r}
+dba_cDC1 <- dba.contrast(
+  dba_cDC1,
+  categories = DBA_CONDITION,
+  minMembers = 2
+)
+
+dba_cDC1 <- dba.analyze(
+  dba_cDC1,
+  method = DBA_EDGER
+)
+
+
+```
+
+### QC plots
+```{r}
+dba.plotHeatmap(dba_cDC1)
+dba.plotPCA(dba_cDC1, DBA_CONDITION, label=DBA_ID)
+
+```
+
+### Inspect contrasts
+```{r}
+dba.show(dba_cDC1, bContrasts = TRUE)
+
+```
+### Extract differential peaks
+```{r}
+res_1 <- dba.report(
+dba_cDC1,
+th = 1,
+method = DBA_EDGER
+)
+
+sig_1 <- res_1[mcols(res_1)$`p-value` < 0.01]
+sig_1
+
+```
+### Split KO-up and WT-up peaks
+```{r}
+ko_up_1 <- sig_1[mcols(sig_1)$Fold > 0]
+wt_up_1 <- sig_1[mcols(sig_1)$Fold < 0]
+```
+
+### Export BED files
+
+```{r}
+names(ko_up_1) <- paste0(
+"peak_", seqnames(ko_up_1), "*",
+start(ko_up_1), "*", end(ko_up_1)
+)
+
+export.bed(ko_up_1, "DARs/ko_up_1_peaks.bed")
+
+names(wt_up_1) <- paste0(
+"peak_", seqnames(wt_up_1), "*",
+start(wt_up_1), "*", end(wt_up_1)
+)
+
+export.bed(wt_up_1, "DARs/wt_up_1_peaks.bed")
+
+names(sig_1) <- paste0(
+"peak_", seqnames(sig_1), "*",
+start(sig_1), "*", end(sig_1)
+)
+
+export.bed(sig_1, "DARs/sig_1.bed")
+```
+
+# Differential Accessibility Analysis — cDC2
+
+```{r}
+cDC2_samples <- read.csv("cDC2_2.csv")
+dba_cDC2 <- dba(sampleSheet = cDC2_samples)
+dba.show(dba_cDC2)
+
+```
+
+### Read counting
+```{r}
+dba_cDC2 <- dba.count(
+  dba_cDC2,
+  summits = 250,
+  minOverlap = 2,
+  bUseSummarizeOverlaps = TRUE
+)
+```
+
+### QC plots
+```{r}
+dba.plotHeatmap(dba_cDC2)
+dba.plotPCA(dba_cDC2, DBA_CONDITION, label=DBA_ID)
+
+```
+
+### Define contrasts and analyze
+```{r}
+dba_cDC2 <- dba.contrast(
+  dba_cDC2,
+  categories = DBA_CONDITION,
+  minMembers = 2
+)
+
+dba_cDC2 <- dba.analyze(
+  dba_cDC2,
+  method = DBA_EDGER
+)
+
+```
+
+### Extract differential peaks
+```{r}
+res_2 <- dba.report(
+  dba_cDC2,
+  th = 1,
+  method = DBA_EDGER
+)
+
+sig_2 <- res_2[mcols(res_2)$`p-value` < 0.01]
+
+```
+
+
+### Split KO-up and WT-up peaks
+```{r}
+ko_up_2 <- sig_2[mcols(sig_2)$Fold > 0]
+wt_up_2 <- sig_2[mcols(sig_2)$Fold < 0]
+```
+
+### Export BED files
+```{r}
+names(ko_up_2) <- paste0(
+"peak_", seqnames(ko_up_2), "*",
+start(ko_up_2), "*", end(ko_up_2)
+)
+
+export.bed(ko_up_2, "DARs/ko_up_2_peaks.bed")
+
+names(wt_up_2) <- paste0(
+"peak_", seqnames(wt_up_2), "*",
+start(wt_up_2), "*", end(wt_up_2)
+)
+
+export.bed(wt_up_2, "DARs/wt_up_2_peaks.bed")
+
+names(sig_2) <- paste0(
+"peak_", seqnames(sig_2), "*",
+start(sig_2), "*", end(sig_2)
+)
+
+export.bed(sig_2, "DARs/sig_2.bed")
+
+```
+
+```{r}
+write.csv(sig_1, "DARs/sig_1.csv", row.names = FALSE)
+write.csv(sig_2, "DARs/sig_2.csv", row.names = FALSE)
+
+```
+
+### Export CSVs
+```{r}
+write.csv(as.data.frame(sig_1), "DARs/sig_1.csv", row.names = FALSE)
+write.csv(as.data.frame(sig_2), "DARs/sig_2.csv", row.names = FALSE)
+```
+
+### Session Info
+```{r}
+sessioninfo::session_info()
+```

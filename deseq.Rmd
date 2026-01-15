@@ -1,0 +1,287 @@
+---
+title: "deseq"
+output: html_document
+---
+
+# DESeq2 - Differential Expression
+
+### Setup
+```{r}
+library(DESeq2)
+library(tidyverse)
+library(ggrepel)
+```
+
+### Read in the counts matrix
+```{r}
+
+cts_1 <- as.matrix(read.csv("/projectnb/bf528/students/hbeakley/final-project-template-hrbeakley/cDC1_Raw_counts.tsv", sep = "\t", row.names='gene_id', header = TRUE))
+cts_2 <- as.matrix(read.csv("/projectnb/bf528/students/hbeakley/final-project-template-hrbeakley/cDC2_Raw_counts.tsv", sep = "\t", row.names='gene_id', header = TRUE))
+
+```
+
+
+### Read in sample metadata
+```{r}
+coldata_1 <- read.csv('/projectnb/bf528/students/hbeakley/final-project-template-hrbeakley/coldata_1.csv')
+
+coldata_2 <- read.csv('/projectnb/bf528/students/hbeakley/final-project-template-hrbeakley/coldata_2.csv')
+```
+
+
+### Construct DESeq2 object
+```{r}
+dds_1 <- DESeqDataSetFromMatrix(
+  countData = cts_1,
+  colData = coldata_1,
+  design = ~ condition
+  )
+
+dds_2 <- DESeqDataSetFromMatrix(
+  countData = cts_2,
+  colData = coldata_2,
+  design = ~ condition
+  )
+
+```
+
+### Running DESeq2
+```{r}
+dds_1 <- DESeq(dds_1)
+res_1 <- results(dds_1, contrast=c("condition","KO","WT"))
+
+dds_2 <- DESeq(dds_2)
+res_2 <- results(dds_2, contrast=c("condition","KO","WT"))
+```
+
+### Prepare RNA results for integration 
+```{r}
+deseq2_res_1 <- as.data.frame(res_1) %>%
+  tibble::rownames_to_column("gene") %>%
+    filter(
+      !is.na(padj),
+      padj <= 0.05
+    )
+
+deseq2_res_2 <- as.data.frame(res_2) %>%
+  tibble::rownames_to_column("gene") %>%
+    filter(
+      !is.na(padj),
+      padj <= 0.05
+    )
+```
+
+
+### Read in Diffbind data
+```{r}
+diffbind_1 <- read_csv("DARs/sig_1.csv") %>%
+  rename(chr = seqnames)
+
+diffbind_2 <- read_csv("DARs/sig_2.csv") %>%
+  rename(chr = seqnames)
+```
+
+### Read in HOMER peak annotations
+```{r}
+homer_1 <- read_tsv(
+  "/projectnb/bf528/students/hbeakley/final-project-template-hrbeakley/results/cDC1_significant_peaks_clean_annotated.txt",
+  comment = "#"
+  ) %>%
+  rename(
+  chr = Chr,
+  start = Start,
+  end = End,
+  gene = `Gene Name`
+)
+
+homer_2 <- read_tsv(
+  "/projectnb/bf528/students/hbeakley/final-project-template-hrbeakley/results/cDC2_significant_peaks_clean_annotated.txt",
+  comment = "#"
+  ) %>%
+  rename(
+  chr = Chr,
+  start = Start,
+  end = End,
+  gene = `Gene Name`
+)
+
+
+```
+
+### Annotate DiffBind peaks with gene assignments
+```{r}
+diffbind_annotated_1 <- diffbind_1 %>%
+inner_join(homer_1, by = c("chr", "start", "end"))
+
+diffbind_annotated_2 <- diffbind_2 %>%
+inner_join(homer_2, by = c("chr", "start", "end"))
+```
+
+### Collapse ATAC peaks to gene-level fold change
+```{r}
+atac_gene_1 <- diffbind_annotated_1 %>%
+  filter(!is.na(gene), gene != "") %>%
+  group_by(gene) %>%
+  summarise(
+  log2FC_ATAC = Fold[which.max(abs(Fold))],
+  .groups = "drop"
+)
+
+atac_gene_2 <- diffbind_annotated_2 %>%
+  filter(!is.na(gene), gene != "") %>%
+  group_by(gene) %>%
+  summarise(
+  log2FC_ATAC = Fold[which.max(abs(Fold))],
+  .groups = "drop"
+)
+
+```
+
+### RNA–ATAC Integration
+```{r}
+merged_1 <- deseq2_res_1 %>%
+  dplyr::select(gene, log2FoldChange) %>%
+  dplyr::rename(log2FC_RNA = log2FoldChange) %>%
+  dplyr::inner_join(atac_gene_1, by = "gene")
+
+merged_2 <- deseq2_res_2 %>%
+  dplyr::select(gene, log2FoldChange) %>%
+  dplyr::rename(log2FC_RNA = log2FoldChange) %>%
+  dplyr::inner_join(atac_gene_2, by = "gene")
+
+```
+
+### Assign concordance categories
+```{r}
+merged_1 <- merged_1 %>%
+  mutate(
+    category = case_when(
+      log2FC_RNA > 0 & log2FC_ATAC > 0 ~ "RNA↑ ATAC↑",
+      log2FC_RNA < 0 & log2FC_ATAC < 0 ~ "RNA↓ ATAC↓",
+      TRUE ~ "Discordant"
+    )
+  )
+
+merged_2 <- merged_2 %>%
+  mutate(
+    category = case_when(
+      log2FC_RNA > 0 & log2FC_ATAC > 0 ~ "RNA↑ ATAC↑",
+      log2FC_RNA < 0 & log2FC_ATAC < 0 ~ "RNA↓ ATAC↓",
+      TRUE ~ "Discordant"
+    )
+  )
+
+
+table(merged_2$category)
+
+```
+
+
+### RNA–ATAC Concordance Plots
+```{r}
+library(ggplot2)
+
+genes_to_label <- c("Maged1", "Il13ra1", "Cd8a")
+
+p1_small <- ggplot(merged_1, aes(x = log2FC_RNA, y = log2FC_ATAC)) +
+  geom_point(aes(color = category), size = 2.5, alpha = 0.6) +
+  geom_vline(xintercept = 0, linewidth = 0.4) +
+  geom_hline(yintercept = 0, linewidth = 0.4) +
+  scale_color_manual(
+    values = c(
+      "RNA↑ ATAC↑" = "#8B2C2C",
+      "RNA↓ ATAC↓" = "#2C5AA0",
+      "Discordant" = "grey70"
+    )
+  ) +
+  theme_classic(base_size = 14) +
+  labs(
+    x = "log2 Fold Change (RNA)",
+    y = "log2 Fold Change (ATAC)",
+    title = "cDC1 RNA–ATAC Concordance"
+  )
+
+p1_labeled <- p1_small +
+  geom_point(
+    data = subset(merged_1, gene %in% genes_to_label),
+    size = 2,
+    color = "black"
+  ) +
+  geom_text_repel(
+    data = subset(merged_1, gene %in% genes_to_label),
+    aes(label = gene),
+    size = 4,
+    box.padding = 0.6,
+    point.padding = 0.5,
+    segment.color = "black",
+    segment.size = 0.4,
+    min.segment.length = 0
+  )
+
+ggsave(
+  filename = "results/cDC1_RNA_ATAC_scatter.png",
+  plot = p1_labeled,
+  width = 6,
+  height = 5,
+  dpi = 300
+)
+
+
+```
+
+
+
+```{r}
+genes_to_label <- c("Susd2", "Spib", "Irf8", "Csf3r")
+
+p2_small <- ggplot(merged_2, aes(x = log2FC_RNA, y = log2FC_ATAC)) +
+  geom_point(aes(color = category), size = 2.5, alpha = 0.6) +
+  geom_vline(xintercept = 0, linewidth = 0.4) +
+  geom_hline(yintercept = 0, linewidth = 0.4) +
+  scale_color_manual(
+    values = c(
+      "RNA↑ ATAC↑" = "#8B2C2C",
+      "RNA↓ ATAC↓" = "#2C5AA0",
+      "Discordant" = "grey70"
+    )
+  ) +
+  theme_classic(base_size = 14) +
+  labs(
+    x = "log2 Fold Change (RNA)",
+    y = "log2 Fold Change (ATAC)",
+    title = "cDC2 RNA–ATAC Concordance"
+  )
+
+p2_labeled <- p2_small +
+  geom_point(
+    data = subset(merged_2, gene %in% genes_to_label),
+    size = 2,
+    color = "black"
+  ) +
+  geom_text_repel(
+    data = subset(merged_2, gene %in% genes_to_label),
+    aes(label = gene),
+    size = 4,
+    box.padding = 0.6,
+    point.padding = 0.5,
+    segment.color = "black",
+    segment.size = 0.4,
+    min.segment.length = 0
+  )
+
+ggsave(
+  filename = "results/cDC2_RNA_ATAC_scatter.png",
+  plot = p2_labeled,
+  width = 6,
+  height = 5,
+  dpi = 300
+)
+
+```
+
+
+## SessionInfo
+
+```{r}
+sessioninfo::session_info()
+```

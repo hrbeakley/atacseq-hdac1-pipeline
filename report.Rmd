@@ -1,0 +1,307 @@
+
+---
+title: "Final Project Report"
+output: html_document
+---
+
+## Quality Control Results
+
+Sequencing quality control indicated overall high data quality across all eight ATAC-seq samples, though with some notable limitations. Read depth ranged from 22.4–33.8M reads per sample, which is below the recommended ~50M depth for differential peak analysis. The primary technical issue observed in raw FASTQ files was elevated adapter content (6.29–11.63% at 40 bp), which was substantially reduced through Trimmomatic trimming to 3.38–5.55% with minimal loss of reads (~0.1%). Duplicate read proportions in trimmed samples ranged from 15.3–24.7%, consistent with expectations for ATAC-seq data due to enrichment at open chromatin regions. All samples failed the per-base sequence content metric, reflecting characteristic transposase sequence bias at read starts that is inherent to ATAC-seq methodology. The four cDC2 samples showed warnings for overrepresented sequences, but these represented <1% of reads and BLAST analysis identified no known contaminants. Mean quality scores, GC content, and N content were acceptable across all samples. Despite the suboptimal read depth, the quality metrics suggest the samples are suitable for chromatin accessibility analysis, though statistical power for detecting differential peaks may be reduced.
+
+## Alignment Statistics
+
+All eight trimmed samples showed high alignment rates to the reference genome (91.2–93.7%). Multimapping rates ranged from 16.5–20.2%, which is expected for ATAC-seq due to reads originating from repetitive and highly accessible genomic regions. Reads were filtered to retain only those with high mapping confidence (MAPQ ≥ 30), removing most ambiguously mapped reads. Peak calling was then performed with MACS3 using --keep-dup auto to filter PCR duplicates. Together, these steps minimized signal inflation from multimapping and technical artifacts, ensuring that identified accessible regions reflect genuine biological signal. However, after all filtering steps, only 17.5–25.1M reads mapped per sample, which is, again, below the recommended ~50M for robust differential accessibility analysis and may limit statistical power to detect condition-specific peaks.
+
+## ATAC-seq Specific QC Metrics
+
+### TSS Enrichment Scores
+
+```{r}
+library(ATACseqQC)
+library(GenomicAlignments)
+library(TxDb.Mmusculus.UCSC.mm10.knownGene)
+library(tibble)
+library(GenomeInfoDb)
+
+# TSS annotations
+txs <- transcripts(TxDb.Mmusculus.UCSC.mm10.knownGene)
+txs <- keepStandardChromosomes(txs, pruning.mode = "coarse")
+
+# Named vector of BAM files
+bam_files <- c(
+  cDC1_KO_1 = "/projectnb/bf528/students/hbeakley/final-project-template-hrbeakley/results/ATAC_cDC1_KO_1.noMT.bam",
+  cDC1_KO_2 = "/projectnb/bf528/students/hbeakley/final-project-template-hrbeakley/results/ATAC_cDC1_KO_2.noMT.bam",
+  cDC1_WT_1 = "/projectnb/bf528/students/hbeakley/final-project-template-hrbeakley/results/ATAC_cDC1_WT_1.noMT.bam",
+  cDC1_WT_2 = "/projectnb/bf528/students/hbeakley/final-project-template-hrbeakley/results/ATAC_cDC1_WT_2.noMT.bam",
+  cDC2_KO_1 = "/projectnb/bf528/students/hbeakley/final-project-template-hrbeakley/results/ATAC_cDC2_KO_1.noMT.bam",
+  cDC2_KO_2 = "/projectnb/bf528/students/hbeakley/final-project-template-hrbeakley/results/ATAC_cDC2_KO_2.noMT.bam",
+  cDC2_WT_1 = "/projectnb/bf528/students/hbeakley/final-project-template-hrbeakley/results/ATAC_cDC2_WT_1.noMT.bam",
+  cDC2_WT_2 = "/projectnb/bf528/students/hbeakley/final-project-template-hrbeakley/results/ATAC_cDC2_WT_2.noMT.bam"
+)
+
+
+# Function to compute TSSE for one BAM
+compute_tsse <- function(bam, txs) {
+  gal <- readBamFile(
+    bamFile = bam,
+    tag = character(0),
+    asMates = FALSE
+  )
+  gal <- keepStandardChromosomes(gal, pruning.mode = "coarse")
+  tsse <- TSSEscore(gal, txs)
+  as.numeric(tsse$TSSEscore)
+}
+
+
+# Run TSSE for all samples
+tsse_scores <- lapply(bam_files, compute_tsse, txs = txs)
+
+# Combine into a tidy table
+tsse_df <- tibble(
+  sample = names(tsse_scores),
+  TSSE = unlist(tsse_scores)
+)
+tsse_df
+
+```
+
+As depicted above, TSS enrichment (TSSE) scores for the four cDC1 samples ranged from 9.73-11.33, and for the four cDC2 samples from 8.23–9.32. TSSE scores measure how much ATAC-seq signal is enriched at transcription start sites compared to surrounding regions. Higher scores tend to indicate better data quality because TSSs are known to have open, nucleosome-depleted chromatin. According to ENCODE Project guidelines for the mm10 genome, TSSE scores ≥ 10 is the recommended threshold for high-quality data [2]. By these criteria, all cDC1 samples meet or exceed the high-quality threshold, whereas the cDC2 samples fall slightly below but remain within a generally acceptable range (TSSE > 7). The modestly reduced TSSE observed in cDC2 cells may reflect minor technical differences or genuine biological variation in chromatin accessibility between dendritic cell subsets. Overall, all samples demonstrate sufficient TSS enrichment for downstream chromatin accessibility analysis, though cDC1 libraries show superior enrichment.
+
+### Fraction of Reads in Peak
+
+```{r}
+library(GenomicRanges)
+library(GenomicAlignments)
+library(rtracklayer)
+library(tibble)
+
+# Named list of BAM + peak files
+samples <- list(
+  cDC1_KO_1 = list(
+    bam   = "/projectnb/bf528/students/hbeakley/final-project-template-hrbeakley/results/ATAC_cDC1_KO_1.noMT.bam",
+    peaks = "/projectnb/bf528/students/hbeakley/final-project-template-hrbeakley/results/ATAC_cDC1_KO_1_peaks.narrowPeak"
+  ),
+  cDC1_KO_2 = list(
+    bam   = "/projectnb/bf528/students/hbeakley/final-project-template-hrbeakley/results/ATAC_cDC1_KO_2.noMT.bam",
+    peaks = "/projectnb/bf528/students/hbeakley/final-project-template-hrbeakley/results/ATAC_cDC1_KO_2_peaks.narrowPeak"
+  ),
+  cDC1_WT_1 = list(
+    bam   = "/projectnb/bf528/students/hbeakley/final-project-template-hrbeakley/results/ATAC_cDC1_WT_1.noMT.bam",
+    peaks = "/projectnb/bf528/students/hbeakley/final-project-template-hrbeakley/results/ATAC_cDC1_WT_1_peaks.narrowPeak"
+  ),
+  cDC1_WT_2 = list(
+    bam   = "/projectnb/bf528/students/hbeakley/final-project-template-hrbeakley/results/ATAC_cDC1_WT_2.noMT.bam",
+    peaks = "/projectnb/bf528/students/hbeakley/final-project-template-hrbeakley/results/ATAC_cDC1_WT_2_peaks.narrowPeak"
+  ),
+  cDC2_KO_1 = list(
+    bam   = "/projectnb/bf528/students/hbeakley/final-project-template-hrbeakley/results/ATAC_cDC2_KO_1.noMT.bam",
+    peaks = "/projectnb/bf528/students/hbeakley/final-project-template-hrbeakley/results/ATAC_cDC2_KO_1_peaks.narrowPeak"
+  ),
+  cDC2_KO_2 = list(
+    bam   = "/projectnb/bf528/students/hbeakley/final-project-template-hrbeakley/results/ATAC_cDC2_KO_2.noMT.bam",
+    peaks = "/projectnb/bf528/students/hbeakley/final-project-template-hrbeakley/results/ATAC_cDC2_KO_2_peaks.narrowPeak"
+  ),
+  cDC2_WT_1 = list(
+    bam   = "/projectnb/bf528/students/hbeakley/final-project-template-hrbeakley/results/ATAC_cDC2_WT_1.noMT.bam",
+    peaks = "/projectnb/bf528/students/hbeakley/final-project-template-hrbeakley/results/ATAC_cDC2_WT_1_peaks.narrowPeak"
+  ),
+  cDC2_WT_2 = list(
+    bam   = "/projectnb/bf528/students/hbeakley/final-project-template-hrbeakley/results/ATAC_cDC2_WT_2.noMT.bam",
+    peaks = "/projectnb/bf528/students/hbeakley/final-project-template-hrbeakley/results/ATAC_cDC2_WT_2_peaks.narrowPeak"
+  )
+)
+
+# Function to compute FRiP for one sample
+compute_frip <- function(bam_file, peak_file) {
+  peaks <- import(peak_file)
+  bam   <- readGAlignments(bam_file)
+
+  reads_in_peaks <- sum(countOverlaps(bam, peaks) > 0)
+  total_reads <- length(bam)
+
+  reads_in_peaks / total_reads
+}
+
+# Run FRiP for all samples
+frip_df <- tibble(
+  sample = names(samples),
+  FRiP = vapply(
+    samples,
+    function(x) compute_frip(x$bam, x$peaks),
+    numeric(1)
+  )
+)
+
+frip_df
+
+```
+
+As depicted above, FRiP scores for the four cDC1 samples ranged from 0.21-0.28, and for the four cDC2 samples from 0.21-0.29. FRiP measures the proportion of aligned reads that fall within called peaks, serving as an indicator of signal-to-noise ratio. Thus, higher scores suggest that sequencing reads are enriched in accessible chromatin regions rather than background noise. According to ENCODE Project guidelines, FRiP ≥ 0.2 is considered acceptable for ATAC-seq data [2]. By this criterion, all eight samples exceed the quality threshold, with no meaningful differences between cDC1 and cDC2 cell types or between WT and KO conditions. However, as we discussed in class, FRiP should be interpreted cautiously as it is inherently circular: peaks are defined by read enrichment, so the metric partially measures how well the peak calling algorithm performed rather than solely reflecting biological signal quality. Nevertheless, when considered alongside other QC metrics, these FRiP values support the conclusion that the data are suitable for downstream chromatin accessibility analysis.
+
+
+## Differentially Accessible Region Count
+
+```{r}
+library(readr)
+
+sig_1 <- read_csv("/projectnb/bf528/students/hbeakley/final-project-template-hrbeakley/DARs/sig_1.csv")
+sig_2 <- read_csv("/projectnb/bf528/students/hbeakley/final-project-template-hrbeakley/DARs/sig_2.csv")
+
+cat("cDC1 DARs:", nrow(sig_1), "\n")
+cat("cDC2 DARs:", nrow(sig_2), "\n")
+
+```
+
+My pipeline identified 1,676 differentially accessible regions (DARs) in cDC1 cells and 755 DARs in cDC2 cells. Fernandes et al. found 1,863 and 843 DARs in cDC1s and cDC2s, respectively [1]. Although I found ~200 fewer DARs in cDC1s and ~100 fewer in cDC2s, we both identified ~2.2-fold more DARs in cDC1s than cDC2s, indicating strong conservation of the underlying biological signal between both analyses. 
+
+## Enrichment of Differential Peaks
+
+```{r}
+library(readr)
+library(dplyr)
+
+# cDC1
+annot_1 <- bind_rows(
+  read_tsv(
+    "/projectnb/bf528/students/hbeakley/final-project-template-hrbeakley/results/ko_up_1_peaks_annotated.txt",
+    comment = "#"
+  ),
+  read_tsv(
+    "/projectnb/bf528/students/hbeakley/final-project-template-hrbeakley/results/wt_up_1_peaks_annotated.txt",
+    comment = "#"
+  )
+)
+
+genes_1 <- annot_1 %>%
+  pull(`Gene Name`) %>%
+  unique() %>%
+  na.omit() %>%
+  .[. != ""]
+
+write.table(
+  genes_1,
+  "DARs/cDC1_DAR_genes.txt",
+  quote = FALSE,
+  row.names = FALSE,
+  col.names = FALSE
+)
+
+# cDC2
+annot_2 <- bind_rows(
+  read_tsv(
+    "/projectnb/bf528/students/hbeakley/final-project-template-hrbeakley/results/ko_up_2_peaks_annotated.txt",
+    comment = "#"
+  ),
+  read_tsv(
+    "/projectnb/bf528/students/hbeakley/final-project-template-hrbeakley/results/wt_up_2_peaks_annotated.txt",
+    comment = "#"
+  )
+)
+
+genes_2 <- annot_2 %>%
+  pull(`Gene Name`) %>%
+  unique() %>%
+  na.omit() %>%
+  .[. != ""]
+
+write.table(
+  genes_2,
+  "DARs/cDC2_DAR_genes.txt",
+  quote = FALSE,
+  row.names = FALSE,
+  col.names = FALSE
+)
+
+knitr::include_graphics(
+"/projectnb/bf528/students/hbeakley/final-project-template-hrbeakley/enrichment/bp_1.png"
+)
+
+knitr::include_graphics(
+"/projectnb/bf528/students/hbeakley/final-project-template-hrbeakley/enrichment/bp_2.png"
+)
+cat("Top to bottom: cDC1, cDC2")
+
+```
+
+The figures above show biological process enrichment analyses of genes associated with differentially accessible regions in cDC1 and cDC2 cells, respectively. In cDC1 cells, enriched terms are dominated by developmental and cell communication processes, particularly pertaining to neuronal and axon guidance. These processes reflect general programs involved in cell migration, signaling, and morphological organization that are relevant to cDC1 function [5]. While cDC2 enrichment results share several broad developmental themes with cDC1 cells, the enrichment profile is more strongly skewed toward cell projection formation and morphogenesis. Overall, these results suggest that HDAC1 loss impacts shared accessibility programs in both cell types, with subtle differences reflecting their distinct functional specializations.
+
+## Motif Enrichment
+
+```{r}
+knitr::include_graphics(c(
+  "/projectnb/bf528/students/hbeakley/final-project-template-hrbeakley/motif_images/KO_1_known_motifs.png",
+  "/projectnb/bf528/students/hbeakley/final-project-template-hrbeakley/motif_images/KO_2_known_motifs.png",
+  "/projectnb/bf528/students/hbeakley/final-project-template-hrbeakley/motif_images/WT_1_known_motifs.png",
+  "/projectnb/bf528/students/hbeakley/final-project-template-hrbeakley/motif_images/WT_2_known_motifs.png"
+))
+cat("Top to bottom: KO cDC1, KO cDC2, WT cDC1, WT cDC2")
+
+```
+
+The figures above show the top five enriched motifs from peaks upregulated in KO vs WT cDC1 cells, KO vs WT cDC2 cells, WT vs KO cDC1 cells, and WT vs KO cDC2 cells. Across most conditions, there is strong enrichment for ETS-family transcription factor motifs, including PU.1, SpiB, ELF5, ELF4, and ETS1, which are well-established regulators of dendritic cell identity, immunity, and development [3,4]. In contrast, WT cDC1 peaks are dominated by bZIP motifs, while cDC1 KO peaks uniquely demonstrate enrichment for IRF motifs and cDC2 KO peaks uniquely show Zf motifs. Overall, the motif enrichment patterns align with known transcriptional programs underlying dendritic cell development and function, with HDAC1 deletion appearing to alter the balance of transcription factor binding at accessible chromatin regions.
+
+
+## Success of Figure Reproductions
+
+```{r}
+
+knitr::include_graphics(c(
+  "/projectnb/bf528/students/hbeakley/final-project-template-hrbeakley/results/cDC1_heatmap.png",
+  "/projectnb/bf528/students/hbeakley/final-project-template-hrbeakley/results/cDC2_heatmap.png"
+))
+cat("Top to bottom: cDC1, cDC2")
+
+```
+
+My reproduction of Figures 6A and B from Fernandes et al. successfully captures the key qualitative trends reported in the original study. In the cDC1 panels, both analyses show markedly stronger chromatin accessibility signal in KO compared to WT samples at gained peaks, while loss peaks display only modestly higher signal in WT relative to KO. The average signal profiles further indicate that the contrast between gain and loss regions is more pronounced in WT samples than in KO samples.
+
+Similar patterns are observed in cDC2 cells, where KO samples exhibit a strong enrichment of signal at gained peaks relative to WT, alongside comparatively minor differences between gain and loss regions in KO profiles. The only notable difference in my reproduction is that I compressed the loss heatmaps, reflecting a substantially smaller number of loss peaks relative to gain peaks (~2.2-fold fewer).
+
+
+```{r}
+knitr::include_graphics(c(
+"results/cDC1_RNA_ATAC_scatter.png",
+"results/cDC2_RNA_ATAC_scatter.png"
+))
+cat("Top to bottom: cDC1, cDC2")
+
+```
+
+My replication of Figures 6C and E was somewhat less successful. For cDC1, both my analysis and the original publication show an enrichment of genes that are concordantly upregulated in both RNA expression and chromatin accessibility in KO relative to WT. Several highlighted genes, including Maged1, Cd8a, and Il13ra1, appear in similar positions relative to each other in both plots. A similar pattern is observed for cDC2, where both analyses show enrichment of concordantly upregulated genes, including Spib and Susd2, which are positioned similarly relative to one another.
+
+A major difference between my plots and those in the original paper is that my figures contain substantially fewer genes overall. As a result, some genes labeled in the published figures are absent from my plots. This discrepancy may be due to several factors. First, I applied the significance thresholds reported in the paper (padj < 0.05 for RNA-seq and p < 0.01 for ATAC-seq), whereas the authors may have used less stringent cutoffs when generating their visualizations. In addition, my differential accessibility analysis identified approximately 300 fewer DARs in total, which likely contributes to the increased sparsity of my plots. Differences in gene annotation conventions may also play a role.
+
+Despite these differences, the overall trends and key concordantly regulated genes observed in my analysis are consistent with the original study, supporting the biological conclusions drawn in the publication.
+
+```{r}
+knitr::include_graphics(c(
+"/projectnb/bf528/students/hbeakley/final-project-template-hrbeakley/igvs/cDC1_maged1.png"
+))
+knitr::include_graphics(c(
+"/projectnb/bf528/students/hbeakley/final-project-template-hrbeakley/igvs/cDC2_spib.png"
+))
+
+cat("Top to bottom: cDC1_maged1, cDC2_spib")
+
+```
+
+
+Regarding Figure 6D, the authors report a gain of chromatin accessibility at the Maged1 locus in cDC1 cells. My genome browser plot for Maged1 in cDC1s (first plot) similarly shows higher ATAC-seq signal in KO samples compared to WT samples at a comparable genomic location. Specifically, the KO bigWig tracks reach higher signal intensities (maximum scales of ~21 and ~16) relative to the WT tracks (~10 and ~8). Consistent with this, the peak tracks show called peaks in both KO samples and in only one WT sample, with the WT peak being notably narrower. Together, these observations support a more robust accessibility signal at this locus in KO cells, consistent with the peak gain reported by the authors.
+
+For Figure 6F, the authors describe a gain of chromatin accessibility near the Spib gene in cDC2 cells, highlighting two peaks of interest: one located more centrally within the gene and another near the right edge. In the published figure, the central peak shows a modest increase in signal in KO relative to WT, while the distal peak exhibits a much stronger KO-specific signal. My genome browser plot for Spib in cDC2 cells recapitulates this pattern, with two prominent accessibility peaks occurring at similar genomic positions. The central peak shows moderately stronger signal in KO bigwig tracks (maximum scales of ~37 and ~28) compared to WT samples (~22 and ~12), which is supported by the peak tracks showing peaks in both KO samples but only one WT sample. Consistent with the original publication, the distal peak displays substantially stronger signal in KO samples, with peak calls present in both KO samples but absent in WT samples. This strong KO-specific accessibility peak near the right side of Spib likely corresponds to the gene's promoter region, suggesting increased Spib expression in cDC2 cells following HDAC1 knockout. 
+
+
+### References
+
+1. De Sá Fernandes, C., Novoszel, P., Gastaldi, T., Krauß, D., Lang, M., Rica, R., … Sibilia, M. (2024). The histone deacetylase HDAC1 controls dendritic cell development and anti-tumor immunity. Cell Reports, 43, 114308. https://doi.org/10.1016/j.celrep.2024.114308
+2. ENCODE Project Consortium. ATAC-seq Data Standards and Processing Pipeline. ENCODE Portal. Updated July 2020. https://www.encodeproject.org/atac-seq/
+3. Yang Y, Han X, Sun L, Shao F, Yin Y, Zhang W. ETS Transcription Factors in Immune Cells and Immune-Related Diseases. Int J Mol Sci. 2024 Sep 17;25(18):10004. doi: 10.3390/ijms251810004. PMID: 39337492; PMCID: PMC11432452.
+4. Zhang, S., Audiger, C., Chopin, M., & Nutt, S. L. (2023). Transcriptional regulation of dendritic cell development and function. Frontiers in Immunology, 14, 1182553. https://doi.org/10.3389/fimmu.2023.1182553
+5. de Winde CM, Munday C, Acton SE. Molecular mechanisms of dendritic cell migration in immunity and cancer. Med Microbiol Immunol. 2020 Aug;209(4):515-529. doi: 10.1007/s00430-020-00680-4. Epub 2020 May 25. PMID: 32451606; PMCID: PMC7395046.
+
+
+## SessionInfo
+
+```{r}
+sessioninfo::session_info()
+```
