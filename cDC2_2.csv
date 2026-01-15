@@ -1,0 +1,5 @@
+SampleID,Condition,bamReads,Peaks,PeakCaller
+ATAC_cDC2_WT_1,WT,results/ATAC_cDC2_WT_1.noMT.bam,results/ATAC_cDC2_WT_1_peaks.narrowPeak,narrow
+ATAC_cDC2_KO_1,KO,results/ATAC_cDC2_KO_1.noMT.bam,results/ATAC_cDC2_KO_1_peaks.narrowPeak,narrow
+ATAC_cDC2_WT_2,WT,results/ATAC_cDC2_WT_2.noMT.bam,results/ATAC_cDC2_WT_2_peaks.narrowPeak,narrow
+ATAC_cDC2_KO_2,KO,results/ATAC_cDC2_KO_2.noMT.bam,results/ATAC_cDC2_KO_2_peaks.narrowPeak,narrow
