@@ -24,6 +24,7 @@ nextflow run main.nf -profile cluster,singularity,conda -resume
 5. Run all cells in deseq.Rmd to perform differential expression analysis on RNA-seq data and generate RNA–ATAC concordance plots.
 
 
-### Citation:
-De Sá Fernandes, C., Novoszel, P., Gastaldi, T., Krauß, D., Lang, M., Rica, R., … Sibilia, M. (2024). The histone deacetylase HDAC1 controls dendritic cell development and anti-tumor immunity. Cell Reports, 43, 114308. https://doi.org/10.1016/j.celrep.2024.114308
+### Citation
+De Sá Fernandes, C., et al. (2024). *The histone deacetylase HDAC1 controls dendritic cell development and anti-tumor immunity.*  
+**Cell Reports**, 43, 114308. https://doi.org/10.1016/j.celrep.2024.114308
 
