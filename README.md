@@ -7,7 +7,7 @@ This project uses publicly available ATAC-seq and RNA-seq data from Fernandes et
 
 1. Navigate to the project directory and activate a Nextflow environment.
 
-2. Run the initial Nextflow pipeline to perform read processing, alignment, peak calling, and QC: 
+2. Run the initial Nextflow pipeline to perform read processing, alignment, QC, and peak calling: 
 
 ```
 nextflow run main.nf -profile cluster,singularity,conda
