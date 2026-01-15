@@ -2,10 +2,6 @@
 
 This project uses publicly available ATAC-seq and RNA-seq data from Fernandes et al. (2024), who examined the effects of HDAC1 loss on chromatin accessibility and transcriptional programs in different types of mouse dendritic cells.
 
-### View the report
-
-The rendered HTML report is available under the GitHub Releases for this repository (asset: `report.html`).
-
 
 ### Description of how to run the pipeline:
 
@@ -26,6 +22,10 @@ nextflow run main.nf -profile cluster,singularity,conda -resume
 ```
 
 5. Run all cells in deseq.Rmd to perform differential expression analysis on RNA-seq data and generate RNA–ATAC concordance plots.
+
+### View the report
+
+The rendered HTML report is available under the GitHub Releases for this repository (asset: `report.html`).
 
 
 ### Citation
