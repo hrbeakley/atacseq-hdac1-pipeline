@@ -9,7 +9,9 @@ This project uses publicly available ATAC-seq and RNA-seq data from Fernandes et
 
 2. Run the initial Nextflow pipeline to perform read processing, alignment, peak calling, and QC: 
 
-    nextflow run main.nf -profile cluster,singularity,conda
+```
+nextflow run main.nf -profile cluster,singularity,conda
+```
 
 3. After the pipeline completes, run all cells in diffbind.Rmd to perform differential accessibility analysis.
 
