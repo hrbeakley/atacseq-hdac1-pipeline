@@ -18,5 +18,5 @@ This project uses publicly available ATAC-seq and RNA-seq data from Fernandes et
 
 ### Citation:
 
-De Sá Fernandes, C., Novoszel, P., Gastaldi, T., Krauß, D., Lang, M., Rica, R., … Sibilia, M. (2024). The histone deacetylase HDAC1 controls dendritic cell development and anti-tumor immunity. Cell Reports, 43, 114308. https://doi.org/10.1016/j.celrep.2024.114308
+    De Sá Fernandes, C., Novoszel, P., Gastaldi, T., Krauß, D., Lang, M., Rica, R., … Sibilia, M. (2024). The histone deacetylase HDAC1 controls dendritic cell development and anti-tumor immunity. Cell Reports, 43, 114308. https://doi.org/10.1016/j.celrep.2024.114308
 
